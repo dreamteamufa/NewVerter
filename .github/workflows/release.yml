@@ -18,8 +18,8 @@ jobs:
           FILE=$(echo "$ADDED" | grep -E '^Verter_v[0-9]+\.[0-9]+\.[0-9]+\.user\.js$' || true)
           if [ -z "$FILE" ]; then echo "version=" >> $GITHUB_OUTPUT; exit 0; fi
           VER=$(echo "$FILE" | sed -E 's/^Verter_v([0-9]+\.[0-9]+\.[0-9]+)\.user\.js$/\1/')
-          echo "file=$FILE"    >> $GITHUB_OUTPUT
-          echo "version=$VER"  >> $GITHUB_OUTPUT
+          echo "file=$FILE"   >> $GITHUB_OUTPUT
+          echo "version=$VER" >> $GITHUB_OUTPUT
 
       - name: Stop if no release file
         if: steps.scan.outputs.version == ''
