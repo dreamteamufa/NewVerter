@@ -279,9 +279,15 @@ const MTC = (() => {
     for(const [lbl,per] of Object.entries(TF)){
       const slot=qStart(t,per);let b=cur[lbl];
       if(slot>b.t){
-        frames[lbl].push({t:b.t+per,O:b.O,H:b.H,L:b.L,C:b.C});
+        const closedAt=b.t+per;
+        const closedBar={t:closedAt,O:b.O,H:b.H,L:b.L,C:b.C};
+        frames[lbl].push(closedBar);
         if(frames[lbl].length>600)frames[lbl].splice(0,frames[lbl].length-600);
         cur[lbl]={t:slot,O:price,H:price,L:price,C:price};
+        if(lbl==='1m'){
+          const ok=(closedAt%60000)===0;
+          console.log('[MTC][1m-close]',new Date(closedAt).toISOString(),'minuteAligned='+ok);
+        }
         console.log(`[CANDLE][${lbl}] O=${b.O} H=${b.H} L=${b.L} C=${b.C} t=${new Date(b.t).toISOString()}`);
       }else{
         b.H=Math.max(b.H,price);b.L=Math.min(b.L,price);b.C=price;
@@ -291,9 +297,17 @@ const MTC = (() => {
   }
 
   function startMinuteSeed(getPrice){
-    const delay=(60000-(Date.now()%60000))%60000;
-    console.log('[MTC][SEED] next seed in',Math.round(delay/1000),'s');
-    setTimeout(()=>seed(Date.now(),getPrice()),delay||1);
+    const wait=(60000-(Date.now()%60000))%60000;
+    console.log('[MTC][SEED] next seed in',Math.round(wait/1000),'s');
+    const trySeed=()=>{
+      const price=getPrice();
+      if(!Number.isFinite(price)){setTimeout(trySeed,250);return;}
+      const now=Date.now();
+      const aligned=now-now%60000;
+      seed(aligned,price);
+      try{window.__MTC_scheduleDraw&&window.__MTC_scheduleDraw();}catch(_){ }
+    };
+    setTimeout(trySeed,wait||1);
   }
 
   return {TF,frames,cur,onTick,startMinuteSeed};
@@ -302,46 +316,7 @@ const MTC = (() => {
 
 
 // [BEGIN BLOCK:CANDLE_BUILDER]
-const candleStore = {
-  ticks: [],
-  frames: { '5s': [], '10s': [], '15s': [], '30s': [], '1m': [], '5m': [] }
-};
-
-function startCandleBuilder(){
-  setInterval(() => {
-    const now = Date.now();
-    candleStore.ticks.push({ t: now, p: globalPrice });
-    const cutoff = now - 360000; // keep 6 min
-    candleStore.ticks = candleStore.ticks.filter(x => x.t >= cutoff);
-  }, 1000);
-
-  buildFrame('5s',  5000);
-  buildFrame('10s', 10000);
-  buildFrame('15s', 15000);
-  buildFrame('30s', 30000);
-  buildFrame('1m',  60000);
-  buildFrame('5m', 300000);
-}
-
-function buildFrame(label, periodMs){
-  setInterval(() => {
-    const now = Date.now();
-    const from = now - periodMs;
-    const arr = candleStore.ticks.filter(x => x.t >= from);
-    if (arr.length){
-      const O = arr[0].p;
-      const H = Math.max(...arr.map(x => x.p));
-      const L = Math.min(...arr.map(x => x.p));
-      const C = arr[arr.length - 1].p;
-      candleStore.frames[label].push({ t: now, O, H, L, C });
-      if (candleStore.frames[label].length > 600)
-        candleStore.frames[label].splice(0, candleStore.frames[label].length - 600);
-      console.log(`[CANDLE][${label}] O=${O} H=${H} L=${L} C=${C}`);
-    }
-  }, periodMs);
-}
-
-startCandleBuilder();
+// Deprecated builder removed in favour of minute-synchronised MTC frames.
 // [END BLOCK:CANDLE_BUILDER]
 
 let updateStartPrice = false;
@@ -1130,11 +1105,26 @@ addUI();
   if(!graphs)return;
 
   let cv=document.getElementById('candle-chart-canvas');
-  if(!cv){cv=document.createElement('canvas');cv.id='candle-chart-canvas';graphs.prepend(cv);}
+  if(!cv){
+    cv=document.createElement('canvas');
+    cv.id='candle-chart-canvas';
+    cv.style.display='block';
+    cv.style.background='#0b0e13';
+    cv.style.border='1px solid rgba(255,255,255,0.08)';
+    cv.style.borderRadius='12px';
+    cv.style.boxShadow='0 6px 24px rgba(0,0,0,0.35)';
+    cv.style.margin='0 auto';
+    graphs.prepend(cv);
+  }
 
-  const W=640,H=240;
+  let W=640,H=320;
   function ctxHiDPI(){
-    const dpr=Math.max(1,Math.floor(window.devicePixelRatio||1));
+    const bounds=graphs.getBoundingClientRect();
+    if(bounds.width){
+      W=Math.min(640,Math.max(320,Math.round(bounds.width)));
+    }
+    H=320;
+    const dpr=Math.max(1,window.devicePixelRatio||1);
     cv.width=W*dpr;cv.height=H*dpr;
     cv.style.width=W+'px';cv.style.height=H+'px';
     const ctx=cv.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);return ctx;
@@ -1162,7 +1152,7 @@ addUI();
     const pad=(hi-lo)*0.05||1e-6;lo-=pad;hi+=pad;
     ctx.globalAlpha=0.15;ctx.strokeStyle='#9aa4b2';ctx.beginPath();
     for(let i=1;i<=3;i++){const y=Math.round(i*H/4);ctx.moveTo(0,y);ctx.lineTo(W,y);}ctx.stroke();ctx.globalAlpha=1;
-    const L=8,R=8,T=6,B=8,innerW=W-L-R,innerH=H-T-B;
+    const L=12,R=12,T=14,B=18,innerW=W-L-R,innerH=H-T-B;
     const xStep=innerW/Math.max(1,hist.length),y=v=>T+(hi-v)*(innerH/(hi-lo));
     for(let i=0;i<hist.length;i++){
       const c=hist[i],x=L+i*xStep+xStep/2;
@@ -1193,79 +1183,27 @@ addUI();
 
 
 // [BEGIN BLOCK:CANDLE_CHART_UI]
-const CandleChartUI = (() => {
-  const TFs = ['5s','10s','15s','30s','1m','5m'];
-  let activeTF = '5s';
-
-  function createPanel(){
-    const host = document.querySelector('#graphs') ||
-                 document.querySelector('#InfoPanel') ||
-                 document.body;
-    const box = document.createElement('div');
-    box.id = 'candle-chart-box';
-    box.style.cssText = 'margin:6px 0;font:12px system-ui;color:#ccc;';
-    const selector = document.createElement('select');
-    TFs.forEach(tf=>{
-      const o=document.createElement('option');
-      o.value=tf;o.text=tf;if(tf==='5s')o.selected=true;
-      selector.appendChild(o);
-    });
-    selector.onchange = e => { activeTF = e.target.value; draw(); };
-    const canvas = document.createElement('canvas');
-    canvas.id='candle-chart-canvas';
-    canvas.width=640;canvas.height=240;
-    canvas.style.cssText='width:640px;height:240px;display:block;background:#0b0e13;border:1px solid #1f2630;border-radius:8px;';
-    box.appendChild(selector);
-    box.appendChild(canvas);
-    host.prepend(box);
-  }
-
-  function draw(){
-    const cv = document.getElementById('candle-chart-canvas');
-    if(!cv) return;
-    const ctx = cv.getContext('2d');
-    const data = (candleStore.frames[activeTF]||[]).slice(-60);
-    ctx.clearRect(0,0,cv.width,cv.height);
-    if(!data.length){ ctx.fillStyle='#aaa'; ctx.fillText('no data',10,14); return; }
-    let lo=Infinity,hi=-Infinity;
-    for(const c of data){if(c.L<lo)lo=c.L;if(c.H>hi)hi=c.H;}
-    const pad=(hi-lo)*0.05||1e-6; lo-=pad; hi+=pad;
-    const y=v=>(hi-v)*(cv.height-4)/(hi-lo)+2;
-    const xStep=cv.width/data.length;
-    data.forEach((c,i)=>{
-      const x=i*xStep+xStep/2;
-      ctx.strokeStyle='#999';
-      ctx.beginPath(); ctx.moveTo(x,y(c.H)); ctx.lineTo(x,y(c.L)); ctx.stroke();
-      ctx.fillStyle=c.C>=c.O?'#2ecc71':'#e74c3c';
-      const bodyH=Math.abs(y(c.O)-y(c.C));
-      ctx.fillRect(x-xStep*0.3,y(Math.max(c.O,c.C)),xStep*0.6,bodyH);
-    });
-  }
-
-  if(false){
-    setInterval(draw,1000);
-  }
+// Legacy DOM-based chart removed. Rendering handled by CANDLE_CHART_RAF_V4.
 // [BEGIN BLOCK:DISABLE_OLD_CHART_TIMER_V4]
 if(false){/* setInterval(draw,1000) отключён. Используется RAF. */}
 // [END BLOCK:DISABLE_OLD_CHART_TIMER_V4]
-
-  createPanel();
-  return { draw };
-})();
 // [END BLOCK:CANDLE_CHART_UI]
 
 // [BEGIN BLOCK:SIGNAL_ENGINE]
 const SignalEngine = (() => {
   function calcSignal(tf){
-    const arr = candleStore.frames[tf];
-    if(!arr || arr.length < 5) return null;
-    const last = arr[arr.length-1];
-    const dir = last.C > last.O ? 'buy' : 'sell';
+    const hist = MTC.frames[tf] || [];
+    const bars = hist.slice(-1);
+    const cur = MTC.cur[tf];
+    if(cur) bars.push(cur);
+    const last = bars[bars.length-1];
+    if(!last) return null;
+    const dir = last.C >= last.O ? 'buy' : 'sell';
     return { dir, last };
   }
 
   setInterval(()=>{
-    const tf = document.querySelector('#candle-chart-box select')?.value || '5s';
+    const tf = window.__MTC_activeTF || '5s';
     const sig = calcSignal(tf);
     if(sig)
       console.log(`[SIGNAL][${tf}] ${sig.dir} O=${sig.last.O} C=${sig.last.C}`);
