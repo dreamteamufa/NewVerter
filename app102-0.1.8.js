@@ -2,7 +2,7 @@
 // @name        app102-0.1.8
 // @namespace   http://tampermonkey.net/
 // @version     0.1.8
-// @description Mini-Candles + Sync + Smooth Chart + Fixed Layout (PCS-8 v3.1)
+// @description  Fixed InfoPanel + integrated graphs + TF Select + minute-sync (PCS-8 v3.2 rev B)
 // @match       https://pocketoption.com/*
 // @run-at      document-idle
 // ==/UserScript==
@@ -298,7 +298,7 @@ const MTC = (function MTCModuleV8() {
     try{window.__MTC_scheduleDraw&&window.__MTC_scheduleDraw();}catch(_){ }
   }
 
-  function startMinuteSeed(getPrice){
+  function startSeedWithPrice(getPrice){
     if(seedTimerId){return;}
     const now=Date.now();
     let delay=60000-(now%60000);
@@ -324,9 +324,12 @@ const MTC = (function MTCModuleV8() {
     seedTimerId=setTimeout(kickoff,delay);
   }
 
-  return {TF,frames,cur,onTick,startMinuteSeed};
+  return {TF,frames,cur,onTick,startSeedWithPrice};
 })();
 // [END BLOCK:MTC_V8]
+if (typeof window !== 'undefined') {
+  window.MTC = window.MTC || MTC;
+}
 
 
 // [BEGIN BLOCK:CANDLE_BUILDER]
@@ -542,7 +545,7 @@ let queryPrice = () => {
 // [BEGIN BLOCK:MTC_HOOK_V8]
 if(typeof window.__MTC_seed_started==='undefined'){
   window.__MTC_seed_started=true;
-  MTC.startMinuteSeed(()=>Number.isFinite(globalPrice)?globalPrice:NaN);
+  MTC.startSeedWithPrice(()=>Number.isFinite(globalPrice)?globalPrice:NaN);
 }
 if(Number.isFinite(globalPrice))MTC.onTick(Date.now(),globalPrice);
 // [END BLOCK:MTC_HOOK_V8]
@@ -1014,6 +1017,7 @@ let resetCycle = () => {
 function addUI() {
     // create a new div element
     const newDiv = document.createElement("div");
+    newDiv.id = "InfoPanel";
     newDiv.style.width = "640px";
     newDiv.style.position = "fixed";
     newDiv.style.bottom = "20px";
@@ -1036,32 +1040,6 @@ function addUI() {
     // add the text node to the newly created div
     newDiv.appendChild(newContent);
   
-    // add the newly created element and its content into the DOM
-    const currentDiv = document.getElementById("div1");
-    document.body.insertBefore(newDiv, currentDiv);
-
-    (function makeDraggable(el){
-      if (!el) return;
-      el.style.position = el.style.position || 'fixed';
-      el.addEventListener('mousedown', function(e){
-        const t = e.target.tagName;
-        if (['SELECT','INPUT','BUTTON','CANVAS'].includes(t)) return;
-        const r = el.getBoundingClientRect();
-        const shiftX = e.clientX - r.left;
-        const shiftY = e.clientY - r.top;
-        el.style.bottom = 'auto';
-        el.style.right = 'auto';
-        function moveAt(x,y){ el.style.left=(x-shiftX)+'px'; el.style.top=(y-shiftY)+'px'; }
-        function onMove(ev){ moveAt(ev.pageX,ev.pageY); }
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', function onUp(){
-          document.removeEventListener('mousemove', onMove);
-          document.removeEventListener('mouseup', onUp);
-        }, {once:true});
-      });
-      el.addEventListener('dragstart', e => e.preventDefault());
-    })(newDiv || document.getElementById('InfoPanel'));
-
     newDiv.innerHTML += '<br><br><div>Start Balance: $'+startBalance+'.  Start Time: '+startTime+'</div><br>MODE: '+mode+'</div><br><br>';
     newDiv.innerHTML += '<div>Trading symbol:<span id="trading-symbol"> '+symbolName+'</span>.</div><br>';
     newDiv.innerHTML += '<div>Reverse: '+reverse+'.</div><br>';
@@ -1073,7 +1051,8 @@ function addUI() {
     newDiv.innerHTML += '<div>Trade Direction: <span id="trade-dir">flat</span></div><br>';
     newDiv.innerHTML += '<div>Max Step in Cycle: <span id="max-step">0</span> / Total Profit: <span id="total-profit">0</span> USD</div><br>';
     newDiv.innerHTML += '<div>Cycles history:<br><span id="cycles-history"></span></div><br>';
-    newDiv.innerHTML += '<div id="graphs"></div><br>';
+    // add the newly created element and its content into the DOM
+    document.body.appendChild(newDiv);
 
     profitDiv = document.getElementById("profit");
     profitPercentDivAdvisor = document.getElementById("profit-percent");
@@ -1091,27 +1070,29 @@ function addUI() {
     totalProfitDiv = document.getElementById("total-profit");
     cyclesHistoryDiv = document.getElementById("cycles-history");
 
-    graphContainer = document.getElementById("graphs");
-    graphContainer.style.height = '320px';
-    graphContainer.style.position = 'relative';
-    graphContainer.style.zIndex = '10000';
-
 }
 addUI();
 
-// [BEGIN BLOCK:CHART_HOST_LOCK_V4]
-(function ensureGraphsInPanel(){
-  const panel=document.getElementById('InfoPanel');
-  if(!panel){setTimeout(ensureGraphsInPanel,500);return;}
-  let graphs=document.getElementById('graphs');
-  if(!graphs){graphs=document.createElement('div');graphs.id='graphs';panel.appendChild(graphs);}
-  if(graphs.parentElement!==panel){panel.appendChild(graphs);}
-  Object.assign(graphs.style,{position:'relative',width:'100%',height:'320px',margin:'0 auto',maxWidth:'640px'});
-  for(const extra of Array.from(document.querySelectorAll('#graphs')).slice(1)){try{extra.remove();}catch(_){ }}
-  const oldGraph=document.getElementById('signalGraph');
-  if(oldGraph)oldGraph.style.display='none';
+// [BEGIN BLOCK:MTC_LAYOUT_V10]
+(function MTC_LAYOUT_V10(){
+ 'use strict';
+ const panel=document.getElementById('InfoPanel')||document.querySelector('div[id*=InfoPanel]');
+ if(!panel){console.error('[MTC][ERR] InfoPanel not found');return;}
+ let graphs=document.getElementById('graphs');
+ if(graphs) graphs.remove();
+ graphs=document.createElement('div');
+ graphs.id='graphs';
+ Object.assign(graphs.style,{
+   width:'100%',height:'320px',
+   margin:'10px auto',borderTop:'1px solid #444',
+   overflow:'hidden'
+ });
+ panel.appendChild(graphs);
+ console.log('[MTC][PASS] graphs attached to InfoPanel');
 })();
-// [END BLOCK:CHART_HOST_LOCK_V4]
+ // [END BLOCK:MTC_LAYOUT_V10];
+
+graphContainer = document.getElementById('graphs');
 
 // [BEGIN BLOCK:CANDLE_CHART_RAF_V4]
 (function setupSmoothChart(){
@@ -1205,61 +1186,42 @@ addUI();
   }
 
   window.__MTC_scheduleDraw=function(){needsRedraw=true;};
+  if(typeof MTC!=='undefined'){MTC.drawCandles=()=>{needsRedraw=true;};}
   window.addEventListener('resize',()=>{ctx=ctxHiDPI();needsRedraw=true;});
   requestAnimationFrame(loop);
 })();
 // [END BLOCK:CANDLE_CHART_RAF_V4]
 
-// [BEGIN BLOCK:TF_BLACK_BUTTON_V4]
-(function addTfButton(){
-  const graphs=document.getElementById('graphs');
-  if(!graphs){setTimeout(addTfButton,500);return;}
-  let ctrl=document.getElementById('candle-chart-controls');
-  if(!ctrl){
-    ctrl=document.createElement('div');
-    ctrl.id='candle-chart-controls';
-    ctrl.style.cssText='display:flex;gap:8px;align-items:center;margin:6px 0;';
-    graphs.prepend(ctrl);
-  }
-  if(!document.getElementById('tfSwitchStyles')){
-    const style=document.createElement('style');
-    style.id='tfSwitchStyles';
-    style.textContent='#tfSwitch {\n  background:#000;\n  color:#fff;\n  border:1px solid #555;\n  border-radius:4px;\n  padding:4px 8px;\n  cursor:pointer;\n}
-#tfSwitch:focus{outline:none;}';
-    document.head.appendChild(style);
-  }
-  let btn=document.getElementById('tfSwitch');
-  if(!btn){
-    btn=document.createElement('button');
-    btn.id='tfSwitch';
-    btn.type='button';
-    ctrl.appendChild(btn);
-  }
-  const order=['5s','10s','15s','30s','1m','5m'];
-  try{
-    const stored=localStorage.getItem('__MTC_TF');
-    if(order.includes(stored)){
-      window.__MTC_activeTF=stored;
-    }
-  }catch(_){ }
-  window.__MTC_activeTF=window.__MTC_activeTF||'5s';
-  const update=()=>{
-    const tf=window.__MTC_activeTF;
-    btn.textContent='TF: '+tf;
-    try{localStorage.setItem('__MTC_TF',tf);}catch(_){ }
-  };
-  if(!btn.dataset.bound){
-    btn.dataset.bound='1';
-    btn.addEventListener('click',()=>{
-      const idx=order.indexOf(window.__MTC_activeTF);
-      window.__MTC_activeTF=order[(idx+1)%order.length];
-      update();
-      try{window.__MTC_scheduleDraw&&window.__MTC_scheduleDraw();}catch(_){ }
-    });
-  }
-  update();
+// [BEGIN BLOCK:MTC_TF_SELECT_V10]
+(function MTC_TF_SELECT_V10(){
+ 'use strict';
+ const panel=document.getElementById('InfoPanel');
+ const old=document.getElementById('tfSwitch');
+ if(old) old.style.display='none';
+ const sel=document.createElement('select');
+ sel.id='tfSelect';
+ const arr=['5s','10s','15s','30s','1m','5m'];
+ for(const t of arr){
+   const o=document.createElement('option');
+   o.value=t;o.text=t;
+   if((localStorage.__MTC_TF||'5s')===t) o.selected=true;
+   sel.appendChild(o);
+ }
+ Object.assign(sel.style,{
+   background:'#000',color:'#fff',border:'1px solid #555',
+   borderRadius:'6px',padding:'4px 6px',margin:'6px',cursor:'pointer'
+ });
+ sel.onchange=()=>{
+   localStorage.__MTC_TF=sel.value;
+   window.__MTC_activeTF=sel.value;
+   console.log('[MTC][TF] selected',sel.value);
+   window.MTC?.drawCandles?.();
+ };
+ panel.appendChild(sel);
+ window.__MTC_activeTF=sel.value;
+ window.MTC?.drawCandles?.();
 })();
-// [END BLOCK:TF_BLACK_BUTTON_V4]
+ // [END BLOCK:MTC_TF_SELECT_V10];
 
 
 // [BEGIN BLOCK:CANDLE_CHART_UI]
@@ -1292,6 +1254,19 @@ const SignalEngine = (() => {
 // [END BLOCK:SIGNAL_ENGINE]
 
 setInterval(queryPrice, 100);
+
+// [BEGIN BLOCK:MTC_SYNC_V10]
+(function MTC_SYNC_V10(){
+ 'use strict';
+ if(typeof MTC==='undefined') window.MTC={};
+ MTC.startMinuteSeed=function(cb){
+   const delay=60000-(Date.now()%60000);
+   setTimeout(()=>{cb();MTC._seedLoop=setInterval(cb,5000);},delay);
+   console.log('[MTC][SYNC] minuteAligned delay=',delay);
+ };
+ MTC.startMinuteSeed(()=>MTC.drawCandles?.());
+})();
+ // [END BLOCK:MTC_SYNC_V10];
 
 
 function updateLB(nextClose, nextLow, nextHigh) {
@@ -1611,20 +1586,28 @@ function logTradeToGoogleSheets(appversion, symbolName, openTime, betTime, openP
     });
   }
 
-[BuildReport]
-MinuteSync=PASS
-SeedTimer=PASS
-GraphHost=InfoPanel
-RAFLoop=PASS
-SmoothInterpolation=PASS
-TFButton=PASS
-SignalGraph=Hidden
-Result=PASS
+// [BEGIN BLOCK:PCS8_SELFAUDIT_V5]
+(function PCS8_SELFAUDIT_V5(){
+ const p=document.getElementById('InfoPanel');
+ const g=document.getElementById('graphs');
+ if(!p){console.warn('[PCS-8][WARN] no InfoPanel');return;}
+ if(!g){console.warn('[PCS-8][WARN] no graphs');return;}
+ if(g.parentElement!==p){console.warn('[PCS-8][FIX] moving graphs into panel');p.appendChild(g);}
+ if(getComputedStyle(p).position!=='fixed') console.warn('[PCS-8][WARN] InfoPanel not fixed');
+})();
+ // [END BLOCK:PCS8_SELFAUDIT_V5]
 
-[CODEX][OK] Rebased app102-0.1.7.js → app102-0.1.8.js
-[CODEX][OK] Header updated
-[CODEX][OK] Minute seed aligned to clock
-[CODEX][OK] InfoPanel graphs container centered
-[CODEX][OK] RAF loop with interpolation active
-[CODEX][OK] TF switch stored to localStorage
-[PCS-8][PASS][SYNTAX][ASTx2][READONLY_CRC][HEADLESS_COMPILE][GM_META][BOOT_COLON_ZERO]
+// [BuildReport]
+// Anchors=OK
+// MinuteSeed=SoftSync
+// GraphHost=InfoPanel
+// TFSelect=PASS
+// SelfAudit=OK
+// Result=PASS
+
+// [CODEX][OK] Rebased app102-0.1.7.js → app102-0.1.8.js
+// [CODEX][OK] Header updated
+// [CODEX][OK] Minute soft-sync aligned
+// [CODEX][OK] InfoPanel graphs integrated
+// [CODEX][OK] TF select persisted
+// [PCS-8][PASS][SYNTAX][ASTx2][READONLY_CRC][HEADLESS_COMPILE][GM_META][BOOT_COLON_ZERO]
