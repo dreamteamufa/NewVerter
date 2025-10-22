@@ -260,6 +260,7 @@ let trendDiv;
 let globalTrendDiv;
 let tradeDirectionDiv;
 let globalPrice;
+let infoPanelMetricsHTML = '';
 
 // [BEGIN BLOCK:MTC_V4]
 const MTC = (() => {
@@ -1000,7 +1001,8 @@ let resetCycle = () => {
 function addUI() {
     // create a new div element
     const newDiv = document.createElement("div");
-    newDiv.style.width = "640px";
+    newDiv.id = "InfoPanel";
+    newDiv.style.width = "960px";
     newDiv.style.position = "fixed";
     newDiv.style.bottom = "20px";
     newDiv.style.right = "60px";
@@ -1015,16 +1017,28 @@ function addUI() {
     historyBetDiv.style.padding = "2px";
     historyBetDiv.style.display = "inline-block";
     historyBetDiv.classList.add("history-bet");
-  
-    // and give it some content
-    const newContent = document.createTextNode(appversion);
-  
-    // add the text node to the newly created div
-    newDiv.appendChild(newContent);
-  
-    // add the newly created element and its content into the DOM
-    const currentDiv = document.getElementById("div1");
-    document.body.insertBefore(newDiv, currentDiv);
+
+    let metricsHTML = appversion;
+    metricsHTML += '<br><br><div>Start Balance: $'+startBalance+'.  Start Time: '+startTime+'</div><br>MODE: '+mode+'</div><br><br>';
+    metricsHTML += '<div>Trading symbol:<span id="trading-symbol"> '+symbolName+'</span>.</div><br>';
+    metricsHTML += '<div>Reverse: '+reverse+'.</div><br>';
+    metricsHTML += '<div>Cycle profit: $<span id="profit">0</span> Won: <span id="won-percent">0</span>%  Wager: $ <span id="wager">0</span></div><br>';
+    metricsHTML += '<div>Current time: <span id="time">0:00</span></div><br>';
+    metricsHTML += '<div>% profit on current pair: <span id="profit-percent">0</span> %</div><br>';
+    // metricsHTML += '<div>History: <span id="history-box"></span></div><br>';
+    metricsHTML += '<div>Indicator: <span id="sqz-indicator">flat</span>Trend: <span id="price-trend">flat</span>globalTrend: <span id="global-trend">flat</span></div><br>';
+    metricsHTML += '<div>Trade Direction: <span id="trade-dir">flat</span></div><br>';
+    metricsHTML += '<div>Max Step in Cycle: <span id="max-step">0</span> / Total Profit: <span id="total-profit">0</span> USD</div><br>';
+    metricsHTML += '<div>Cycles history:<br><span id="cycles-history"></span></div><br>';
+
+    infoPanelMetricsHTML = metricsHTML;
+    newDiv.innerHTML = metricsHTML;
+
+    const graphsDiv = document.createElement("div");
+    graphsDiv.id = "graphs";
+    newDiv.appendChild(graphsDiv);
+
+    document.body.appendChild(newDiv);
 
     (function makeDraggable(el){
       if (!el) return;
@@ -1048,18 +1062,64 @@ function addUI() {
       el.addEventListener('dragstart', e => e.preventDefault());
     })(newDiv || document.getElementById('InfoPanel'));
 
-    newDiv.innerHTML += '<br><br><div>Start Balance: $'+startBalance+'.  Start Time: '+startTime+'</div><br>MODE: '+mode+'</div><br><br>';
-    newDiv.innerHTML += '<div>Trading symbol:<span id="trading-symbol"> '+symbolName+'</span>.</div><br>';
-    newDiv.innerHTML += '<div>Reverse: '+reverse+'.</div><br>';
-    newDiv.innerHTML += '<div>Cycle profit: $<span id="profit">0</span> Won: <span id="won-percent">0</span>%  Wager: $ <span id="wager">0</span></div><br>';
-    newDiv.innerHTML += '<div>Current time: <span id="time">0:00</span></div><br>';
-    newDiv.innerHTML += '<div>% profit on current pair: <span id="profit-percent">0</span> %</div><br>';
-    // newDiv.innerHTML += '<div>History: <span id="history-box"></span></div><br>';
-    newDiv.innerHTML += '<div>Indicator: <span id="sqz-indicator">flat</span>Trend: <span id="price-trend">flat</span>globalTrend: <span id="global-trend">flat</span></div><br>';
-    newDiv.innerHTML += '<div>Trade Direction: <span id="trade-dir">flat</span></div><br>';
-    newDiv.innerHTML += '<div>Max Step in Cycle: <span id="max-step">0</span> / Total Profit: <span id="total-profit">0</span> USD</div><br>';
-    newDiv.innerHTML += '<div>Cycles history:<br><span id="cycles-history"></span></div><br>';
-    newDiv.innerHTML += '<div id="graphs"></div><br>';
+}
+addUI();
+
+// [BEGIN BLOCK:MTC_LAYOUT_HORIZONTAL_V1]
+(function MTC_LAYOUT_HORIZONTAL_V1(){
+  'use strict';
+  const panel=document.getElementById('InfoPanel');
+  const graphs=document.getElementById('graphs');
+  if(!panel||!graphs){console.error('[MTC][ERR] panel/graphs not found');return;}
+
+  // создать контейнер строки
+  let row=document.getElementById('ip-row');
+  if(!row){
+    row=document.createElement('div');
+    row.id='ip-row';
+    panel.innerHTML='';
+    panel.appendChild(row);
+  }
+
+  // создать левый и правый блоки
+  const left=document.createElement('div');
+  left.id='ip-left';
+  const right=document.createElement('div');
+  right.id='ip-right';
+
+  Object.assign(row.style,{
+    display:'flex',gap:'12px',alignItems:'flex-start',
+    justifyContent:'space-between'
+  });
+  Object.assign(left.style,{
+    flex:'1.1 1 0',minWidth:'420px'
+  });
+  Object.assign(right.style,{
+    flex:'1 1 0',minWidth:'420px'
+  });
+  Object.assign(graphs.style,{
+    width:'100%',height:'360px'
+  });
+
+  // разместить график слева, метрики справа
+  left.appendChild(graphs);
+  const metrics=document.createElement('div');
+  metrics.id='ip-metrics';
+  metrics.innerHTML='<div id="metrics-placeholder"></div>';
+  right.appendChild(metrics);
+
+  row.appendChild(left);
+  row.appendChild(right);
+  console.log('[MTC][PASS] InfoPanel horizontal layout applied');
+})();
+// [END BLOCK:MTC_LAYOUT_HORIZONTAL_V1]
+
+(function hydrateInfoPanel(){
+  function assignMetrics(){
+    const panel=document.getElementById('InfoPanel');
+    const metrics=document.getElementById('ip-metrics');
+    if(!panel||!metrics){setTimeout(assignMetrics,100);return;}
+    metrics.innerHTML=infoPanelMetricsHTML;
 
     profitDiv = document.getElementById("profit");
     profitPercentDivAdvisor = document.getElementById("profit-percent");
@@ -1073,26 +1133,31 @@ function addUI() {
     wonDiv = document.getElementById("won-percent");
     wagerDiv = document.getElementById("wager");
     maxStepDiv = document.getElementById("max-step");
-    // cyclesDiv.innerHTML = cyclesToPlay;
     totalProfitDiv = document.getElementById("total-profit");
     cyclesHistoryDiv = document.getElementById("cycles-history");
 
     graphContainer = document.getElementById("graphs");
-    graphContainer.style.height = '320px';
-    graphContainer.style.position = 'relative';
-    graphContainer.style.zIndex = '10000';
-
-}
-addUI();
+    if(graphContainer){
+      graphContainer.style.position='relative';
+      graphContainer.style.zIndex='10000';
+    }
+  }
+  assignMetrics();
+})();
 
 // [BEGIN BLOCK:CHART_HOST_LOCK_V4]
 (function ensureGraphsInPanel(){
   const panel=document.getElementById('InfoPanel');
   if(!panel){setTimeout(ensureGraphsInPanel,500);return;}
+  const left=document.getElementById('ip-left');
+  if(!left){setTimeout(ensureGraphsInPanel,200);return;}
   let graphs=document.getElementById('graphs');
-  if(!graphs){graphs=document.createElement('div');graphs.id='graphs';panel.appendChild(graphs);}
-  if(graphs.parentElement!==panel)panel.appendChild(graphs);
-  Object.assign(graphs.style,{position:'relative',zIndex:'10000',width:'100%',maxWidth:'640px',height:'320px'});
+  if(!graphs){
+    graphs=document.createElement('div');
+    graphs.id='graphs';
+  }
+  if(graphs.parentElement!==left)left.appendChild(graphs);
+  Object.assign(graphs.style,{position:'relative',zIndex:'10000',width:'100%',height:'360px'});
   for(const n of Array.from(document.querySelectorAll('#graphs')).slice(1)){try{n.remove();}catch(_){ }}
 })();
 // [END BLOCK:CHART_HOST_LOCK_V4]
